@@ -17,19 +17,18 @@ commit 9859c61858d6a55dc648bafef46c554a93d87285
  create mode 100644 src/boot/efi/slot.h
 
 diff --git a/src/boot/efi/boot.c b/src/boot/efi/boot.c
-index b4f3b9605a..2dc8a3bbb1 100644
+index c6603da3ad..2dc8a3bbb1 100644
 --- a/src/boot/efi/boot.c
 +++ b/src/boot/efi/boot.c
-@@ -15,6 +15,7 @@
+@@ -18,6 +18,7 @@
  #include "random-seed.h"
  #include "secure-boot.h"
  #include "shim.h"
 +#include "slot.h"
  #include "util.h"
- 
- #ifndef EFI_OS_INDICATIONS_BOOT_TO_FW_UI
-@@ -2189,6 +2190,46 @@ out_unload:
-         return err;
+ #include "xbootldr.h"
+
+@@ -2221,4 +2222,44 @@ out_unload:
  }
  
 +static EFI_STATUS boot_ab(EFI_LOADED_IMAGE *parent_image, EFI_HANDLE device, EFI_FILE *root_dir, ABConfig *config) {
@@ -72,48 +71,42 @@ index b4f3b9605a..2dc8a3bbb1 100644
 +        return err;
 +}
 +
- static EFI_STATUS reboot_into_firmware(VOID) {
-         UINT64 old, new;
-         EFI_STATUS err;
-@@ -2257,6 +2298,7 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *sys_table) {
+ static void config_free(Config *config) {
+         assert(config);
+@@ -2368,4 +2409,5 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *sys_table) {
          CHAR16 *loaded_image_path;
          EFI_STATUS err;
-         Config config;
 +        ABConfig ab_config;
          UINT64 init_usec;
          BOOLEAN menu = FALSE;
-         CHAR16 uuid[37];
-@@ -2293,6 +2335,10 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *sys_table) {
-                         return log_error_status_stall(err, L"Error installing security policy: %r", err);
+@@ -2399,5 +2441,9 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *sys_table) {
          }
  
 +        if (get_ab_config(root_dir, &ab_config) && !EFI_ERROR(boot_ab(image, loaded_image->DeviceHandle, root_dir, &ab_config))) {
-+              return EFI_SUCCESS;
++                return EFI_SUCCESS;
 +        }
 +
-         /* the filesystem path to this image, to prevent adding ourselves to the menu */
-         loaded_image_path = DevicePathToStr(loaded_image->FilePath);
-         efivar_set(LOADER_GUID, L"LoaderImageIdentifier", loaded_image_path, 0);
+         (void) load_drivers(image, loaded_image, root_dir);
+
+         config_load_all_entries(&config, loaded_image, loaded_image_path, root_dir);
 diff --git a/src/boot/efi/meson.build b/src/boot/efi/meson.build
-index afdf739d9b..200cf38fc0 100644
+index 86cb29e9f6..200cf38fc0 100644
 --- a/src/boot/efi/meson.build
 +++ b/src/boot/efi/meson.build
-@@ -12,6 +12,7 @@ efi_headers = files('''
-         random-seed.h
-         sha256.h
-         shim.h
-+        slot.h
-         splash.h
-         util.h
- '''.split())
-@@ -32,6 +33,7 @@ systemd_boot_sources = '''
-         random-seed.c
-         sha256.c
-         shim.c
-+        slot.c
- '''.split()
+@@ -308,4 +308,5 @@ efi_headers = files(
+         'random-seed.h',
+         'shim.h',
++        'slot.h',
+         'splash.h',
+         'util.h',
+@@ -330,6 +331,7 @@ systemd_boot_sources = files(
+         'random-seed.c',
+         'shim.c',
++        'slot.c',
+         'xbootldr.c',
+ )
  
- stub_sources = '''
+ stub_sources = files(
 diff --git a/src/boot/efi/slot.c b/src/boot/efi/slot.c
 new file mode 100644
 index 0000000000..e55b74ff99
